@@ -2,4 +2,4 @@
 .env
 .idle/
 /logs/*.log
-/database
+/database/db.sqlite
