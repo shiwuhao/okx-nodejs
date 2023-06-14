@@ -152,10 +152,12 @@ const computeDiff = (products, product1, product2) => {
             }
 
             if (diff >= buyPrice && diff < sellPrice) { // 买入规则
+                logToFile('触发买入规则',diff)
                 await handleBuy(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
             }
 
             if (diff >= sellPrice) { // 卖出规则
+                logToFile('触发卖出规则',diff)
                 await handleSell(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
             }
         }
