@@ -115,12 +115,17 @@ const computeDiff = (products, product1, product2) => {
             if (result?.op === 'batch-orders') {
                 logToFile('批量下单响应：', result);
                 result?.data.map(async ({sCode, clOrdId, ordId, tag}) => {
-                    if (sCode === '0') { // 买入或卖出成功
-                        await redis.set(tag, ordId)
+                    const side = tag.charAt(0);
+                    if (sCode === '0') { // 买入或卖出成功，更新订单状态
                         await order.update({ordId, status: 'successful'}, {where: {clOrdId}})
+                        if (side === 'B') { // 买入成功，加入缓存，
+                            await redis.set(tag, ordId)
+                        } else if (side === 'S') { // 卖出成功，清理买入缓存
+                            await redis.del(tag.replace('S', 'B'))
+                        }
+
                     } else { // 买入或卖出失败
                         await order.update({ordId, status: 'failed'}, {where: {clOrdId}})
-                        const side = tag.charAt(0);
                         if (side === 'B') { // 买
                             console.log('重新买入')
                         } else if (side === 'S') { // 卖
