@@ -18,7 +18,7 @@ const user = {
 const product1 = "ETH-USD-SWAP";
 const product2 = "ETH-USDT-230929";
 const buyPrice = 9;
-const sellPrice = 15;
+const sellPrice = 14.5;
 
 const buyKey1 = 'B' + product1.replaceAll('-', '');
 const buyKey2 = 'B' + product2.replaceAll('-', '');
