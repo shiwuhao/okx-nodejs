@@ -1,5 +1,7 @@
 # okx-nodejs
 
+#### 需要安装nodejs,redis服务
+
 ## 安装依赖
 
 ```
