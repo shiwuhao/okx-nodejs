@@ -36,13 +36,14 @@ const buildBatchOrderArgs = (side, _args = []) => {
     const args = _args.map((item, index) => {
         return {
             side: side,
-            instId: item?.instId,
             tdMode: "cross",
             ordType: "market",
             posSide: 'long',
             tag: prefix + item?.instId.replaceAll('-', ''),
             clOrdId: batchId + prefix + (index + 1),
-            sz: item?.sz
+            // instId: item?.instId,
+            // sz: item?.sz,
+            ...item
         }
     });
     return {id: batchId, op: "batch-orders", args: args};
@@ -58,7 +59,7 @@ const handleBatchOrder = (ws, side, _args) => {
     const params = buildBatchOrderArgs(side, _args)
 
     const orders = params.args.map((item) => ({batchId: params.id, ...item}))
-    order.bulkCreate(orders).then(() => logToFile('买入请求', params))
+    order.bulkCreate(orders).then(() => logToFile('批量下单请求', params))
 
     ws.send(JSON.stringify(params));
 }
@@ -131,23 +132,22 @@ const computeDiff = (products, product1, product2) => {
         }
     });
 
-    let res = {};
     // 公共频道标记价格
     watchMarkPrice({
         products: [product1, product2],
         onMessage: async (response) => {
-            res.product = response;
-            res.diff = computeDiff(response, product1, product2);
+            const diff = computeDiff(response, product1, product2);
             if (args?.[0] === '--table') {
                 console.clear();
-                console.table(res)
+                console.table(response)
+                console.log('diff:', diff);
             }
 
-            if (res.diff >= buyPrice) { // 买入规则
+            if (diff >= buyPrice && diff < sellPrice) { // 买入规则
                 await handleBuy(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
             }
 
-            if (res.diff >= sellPrice) { // 卖出规则
+            if (diff >= sellPrice) { // 卖出规则
                 await handleSell(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
             }
         }
