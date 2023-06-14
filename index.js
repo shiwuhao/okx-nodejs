@@ -4,6 +4,7 @@ const {watchMarkPrice, watchPrivate, handleLogin} = require('./lib/websocket.js'
 const order = require('./models/order')
 const moment = require("moment/moment");
 require('dotenv').config()
+const debounce = require('lodash/debounce');
 
 const args = process.argv.slice(2);
 
@@ -64,6 +65,8 @@ const handleBatchOrder = (ws, side, _args) => {
     ws.send(JSON.stringify(params));
 }
 
+const debouncedBatchOrder = debounce(handleBatchOrder, 2000);
+
 /**
  * 买入
  * @param ws
@@ -76,7 +79,7 @@ const handleBuy = async (ws, _args) => {
 
     await redis.set('buyLock', 1, 60); // 锁定60秒
 
-    handleBatchOrder(ws, 'buy', _args);
+    debouncedBatchOrder(ws, 'buy', _args);
 }
 
 /**
@@ -90,7 +93,7 @@ const handleSell = async (ws, _args) => {
 
     await redis.set('sellLock', 1, 60);
 
-    handleBatchOrder(ws, 'sell', _args);
+    debouncedBatchOrder(ws, 'sell', _args);
 }
 
 /**
