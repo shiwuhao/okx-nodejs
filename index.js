@@ -116,7 +116,7 @@ const computeDiff = (products, product1, product2) => {
         onOpen: (ws) => handleLogin(ws, user),
         onMessage: (ws, result) => {
             if (result?.op === 'batch-orders') {
-                logToFile('批量下单响应：', result);
+                logToFile('批量下单响应', result);
                 result?.data.map(async ({sCode, clOrdId, ordId, tag}) => {
                     const side = tag.charAt(0);
                     if (sCode === '0') { // 买入或卖出成功，更新订单状态
