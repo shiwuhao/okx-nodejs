@@ -1,6 +1,10 @@
 # okx-nodejs
 
-#### 需要安装nodejs,redis服务
+#### 安装nodejs,redis服务
+```
+# mac
+brew install nodejs redis
+```
 
 ## 安装依赖
 
