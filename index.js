@@ -65,8 +65,6 @@ const handleBatchOrder = (ws, side, _args) => {
     ws.send(JSON.stringify(params));
 }
 
-const debouncedBatchOrder = debounce(handleBatchOrder, 2000);
-
 /**
  * 买入
  * @param ws
@@ -79,8 +77,10 @@ const handleBuy = async (ws, _args) => {
 
     await redis.set('buyLock', 1, 60); // 锁定60秒
 
-    debouncedBatchOrder(ws, 'buy', _args);
+    handleBatchOrder(ws, 'buy', _args);
 }
+
+const debouncedHandleBuy = debounce(handleBuy, 2000);
 
 /**
  * 卖出
@@ -93,8 +93,10 @@ const handleSell = async (ws, _args) => {
 
     await redis.set('sellLock', 1, 60);
 
-    debouncedBatchOrder(ws, 'sell', _args);
+    handleBatchOrder(ws, 'sell', _args);
 }
+
+const debouncedHandleSell = debounce(handleSell, 2000);
 
 /**
  * 计算两个产品的差价
@@ -152,11 +154,11 @@ const computeDiff = (products, product1, product2) => {
             }
 
             if (diff >= buyPrice && diff < sellPrice) { // 买入规则
-                await handleBuy(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
+                await debouncedHandleBuy(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
             }
 
             if (diff >= sellPrice) { // 卖出规则
-                await handleSell(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
+                await debouncedHandleSell(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
             }
         }
     });
