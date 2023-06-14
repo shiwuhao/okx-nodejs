@@ -2,3 +2,4 @@
 .env
 .idle/
 /logs/*.log
+/database
