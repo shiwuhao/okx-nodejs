@@ -30,6 +30,10 @@ const Order = db.define('orders', {
         type: Sequelize.STRING,
         comment: '订单类型',
     },
+    posSide: {
+        type: Sequelize.STRING,
+        comment: '持仓方向',
+    },
     instId: {
         type: Sequelize.STRING,
         comment: '产品id',

@@ -6,7 +6,7 @@ const moment = require("moment/moment");
 require('dotenv').config()
 const debounce = require('lodash/debounce');
 
-const args = process.argv.slice(2);
+const cliArgs = process.argv.slice(2);
 
 const user = {
     apiKey: process.env.API_KEY,
@@ -14,37 +14,38 @@ const user = {
     passphrase: process.env.API_PASSPHRASE,
 };
 
+const futuresInst = "ETH-USDT-230929";// 交割
+const swapInst = "ETH-USDT-SWAP";  // 永续
+const kcDiff = 9;// 开仓差价
+const pcDiff = 14.5;// 平仓差价
 
-const product1 = "ETH-USD-SWAP";
-const product2 = "ETH-USDT-230929";
-const buyPrice = 9;
-const sellPrice = 14.5;
+const POSITION_KC = 'KC';// 开仓标识
+const POSITION_PC = 'PC';// 平仓标识
 
-const buyKey1 = 'B' + product1.replaceAll('-', '');
-const buyKey2 = 'B' + product2.replaceAll('-', '');
-const sellKey1 = 'S' + product1.replaceAll('-', '');
-const sellKey2 = 'S' + product2.replaceAll('-', '');
+const kcKey1 = POSITION_KC + futuresInst.replaceAll('-', '');
+const kcKey2 = POSITION_KC + swapInst.replaceAll('-', '');
+const pcKey1 = POSITION_PC + futuresInst.replaceAll('-', '');
+const pcKey2 = POSITION_PC + swapInst.replaceAll('-', '');
 
 /**
  * 生成批量下单参数
- * @param side
+ * @param position KC PC
  * @param _args
  * @returns {{args: {instId: *, clOrdId, side: string, posSide: string, sz: *, tdMode: string, tag: string, ordType: string}[], op: string, id: string}}
  */
-const buildBatchOrderArgs = (side, _args = []) => {
-    const prefix = side.charAt(0).toUpperCase();
-    const batchId = prefix + moment().format('YYYYMMDDHHmmssSSS');
+const buildBatchOrderArgs = (position, _args = []) => {
+    const batchId = position + moment().format('YYYYMMDDHHmmssSSS');
     const args = _args.map((item, index) => {
         return {
-            side: side,
             tdMode: "cross",
             ordType: "market",
-            posSide: 'long',
-            tag: prefix + item?.instId.replaceAll('-', ''),
-            clOrdId: batchId + prefix + (index + 1),
+            tag: position + item?.instId.replaceAll('-', ''),
+            clOrdId: batchId + position + (index + 1),
+            ...item,
+            // side: side,
+            // posSide: 'long',
             // instId: item?.instId,
             // sz: item?.sz,
-            ...item
         }
     });
     return {id: batchId, op: "batch-orders", args: args};
@@ -107,7 +108,18 @@ const debouncedHandleSell = debounce(handleSell, 2000);
  */
 const computeDiff = (products, product1, product2) => {
     const diff = products?.[product1]?.['markPx'] - products?.[product2]?.['markPx']
-    return parseFloat(Math.abs(diff).toFixed(2));
+    return parseFloat(diff.toFixed(2));
+}
+
+/**
+ * cli面板
+ * @param response
+ * @param diff
+ */
+const consoleTable = (response, diff) => {
+    console.clear();
+    console.table(response)
+    console.log('diff ', diff);
 }
 
 
@@ -121,14 +133,13 @@ const computeDiff = (products, product1, product2) => {
                 logToFile('批量下单响应', result);
                 result?.data.map(async ({sCode, clOrdId, ordId, tag}) => {
                     const side = tag.charAt(0);
-                    if (sCode === '0') { // 买入或卖出成功，更新订单状态
+                    if (sCode === '0') { // 下单成功，更新订单状态
                         await order.update({ordId, status: 'successful'}, {where: {clOrdId}})
-                        if (side === 'B') { // 买入成功，加入缓存，
+                        if (side === POSITION_KC) { // 开仓成功，加入缓存，
                             await redis.set(tag, ordId)
-                        } else if (side === 'S') { // 卖出成功，清理买入缓存
-                            await redis.del(tag.replace('S', 'B'))
+                        } else if (side === POSITION_PC) { // 平仓成功，清理缓存
+                            await redis.del(tag)
                         }
-
                     } else { // 买入或卖出失败
                         await order.update({ordId, status: 'failed'}, {where: {clOrdId}})
                         if (side === 'B') { // 买
@@ -144,21 +155,29 @@ const computeDiff = (products, product1, product2) => {
 
     // 公共频道标记价格
     watchMarkPrice({
-        products: [product1, product2],
+        products: [futuresInst, swapInst],
         onMessage: async (response) => {
-            const diff = computeDiff(response, product1, product2);
-            if (args?.[0] === '--table') {
-                console.clear();
-                console.table(response)
-                console.log('diff:', diff);
+            const diff = computeDiff(response, futuresInst, swapInst); // 交割和永续差价
+            const diffAbs = Math.abs(diff); // 差价绝对值
+            if (cliArgs?.[0] === '--table') consoleTable(response, diff);
+
+            if (diffAbs >= kcDiff && diffAbs < pcDiff) { // 开仓规则
+                if (diff > 0) { // 交割大于永续
+                    await debouncedHandleBuy(ws, [
+                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: 1},
+                        {instId: swapInst, side: 'sell', posSide: 'short', sz: 1}
+                    ])
+                } else {// 交割小于永续
+                    await debouncedHandleBuy(ws, [
+                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: 1},
+                        {instId: swapInst, side: 'sell', posSide: 'short', sz: 1}
+                    ])
+                }
+
             }
 
-            if (diff >= buyPrice && diff < sellPrice) { // 买入规则
-                await debouncedHandleBuy(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
-            }
-
-            if (diff >= sellPrice) { // 卖出规则
-                await debouncedHandleSell(ws, [{instId: product1, sz: 1}, {instId: product2, sz: 1}])
+            if (diffAbs >= pcDiff) { // 卖出规则
+                await debouncedHandleSell(ws, [{instId: futuresInst, sz: 1}, {instId: swapInst, sz: 1}])
             }
         }
     });
