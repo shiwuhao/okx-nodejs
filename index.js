@@ -185,8 +185,10 @@ const handleBatchOrderCallback = async (result) => {
 
             if (diffAbs >= pcDiff) { // 平仓规则
                 const batchId = await redis.get(POSITION_KC);
+                if (!batchId) return false;
+
                 const orderList = await order.findAll({where: {batchId}, raw: true});
-                if (!batchId || !orderList) return logToFile('平仓异常:', '找不到订单信息');
+                if (!orderList) logToFile('平仓异常:', '找不到订单信息');
 
                 const args = orderList.map(item => {
                     const {instId, sz, posSide, side} = item;
