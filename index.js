@@ -4,7 +4,7 @@ const {watchMarkPrice, watchPrivate, handleLogin} = require('./lib/websocket.js'
 const order = require('./models/order')
 const moment = require("moment/moment");
 require('dotenv').config()
-const debounce = require('lodash/debounce');
+const throttle = require('lodash/throttle');
 
 const cliArgs = process.argv.slice(2);
 
@@ -18,6 +18,7 @@ const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 9;// 开仓差价
 const pcDiff = 14.5;// 平仓差价
+const sz = 1;//数量
 
 const POSITION_KC = 'KC';// 开仓标识
 const POSITION_PC = 'PC';// 平仓标识
@@ -29,9 +30,9 @@ const pcKey2 = POSITION_PC + swapInst.replaceAll('-', '');
 
 /**
  * 生成批量下单参数
- * @param position KC PC
+ * @param position
  * @param _args
- * @returns {{args: {instId: *, clOrdId, side: string, posSide: string, sz: *, tdMode: string, tag: string, ordType: string}[], op: string, id: string}}
+ * @returns {{args: (*&{clOrdId, tdMode: string, tag, ordType: string})[], op: string, id: string}}
  */
 const buildBatchOrderArgs = (position, _args = []) => {
     const batchId = position + moment().format('YYYYMMDDHHmmssSSS');
@@ -42,10 +43,6 @@ const buildBatchOrderArgs = (position, _args = []) => {
             tag: position + item?.instId.replaceAll('-', ''),
             clOrdId: batchId + position + (index + 1),
             ...item,
-            // side: side,
-            // posSide: 'long',
-            // instId: item?.instId,
-            // sz: item?.sz,
         }
     });
     return {id: batchId, op: "batch-orders", args: args};
@@ -67,37 +64,37 @@ const handleBatchOrder = (ws, side, _args) => {
 }
 
 /**
- * 买入
+ * 开仓
  * @param ws
  * @param _args
  * @returns {Promise<boolean>}
  */
-const handleBuy = async (ws, _args) => {
-    if (await redis.get('buyLock')) return false;
-    if (await redis.get(buyKey1) && await redis.get(buyKey2)) return false;
+const handleKC = async (ws, _args) => {
+    const lockKey = POSITION_KC + ':lock';
+    if (await redis.get(lockKey) || await redis.get(POSITION_KC)) return false; // 校验锁和开仓订单
 
-    await redis.set('buyLock', 1, 60); // 锁定60秒
+    await redis.set(lockKey, 1, 60); // 锁定60秒
 
-    handleBatchOrder(ws, 'buy', _args);
+    handleBatchOrder(ws, POSITION_KC, _args);
 }
-
-const debouncedHandleBuy = debounce(handleBuy, 2000);
 
 /**
- * 卖出
+ * 平仓
  * @param ws
  * @param _args
  * @returns {Promise<boolean>}
  */
-const handleSell = async (ws, _args) => {
-    if (await redis.get('sellLock')) return false;
+const handlePC = async (ws, _args) => {
+    const lockKey = POSITION_PC + ':lock';
+    if (await redis.get(lockKey)) return false;
 
-    await redis.set('sellLock', 1, 60);
+    await redis.set(lockKey, 1, 60);// 锁定60秒
 
-    handleBatchOrder(ws, 'sell', _args);
+    handleBatchOrder(ws, POSITION_PC, _args);
 }
 
-const debouncedHandleSell = debounce(handleSell, 2000);
+const throttleHandleKC = throttle(handleKC, 2000);
+const throttleHandlePC = throttle(handlePC, 2000);
 
 /**
  * 计算两个产品的差价
@@ -122,33 +119,47 @@ const consoleTable = (response, diff) => {
     console.log('diff ', diff);
 }
 
+/**
+ * 批量下单响应
+ * @param result
+ * @returns {Promise<void>}
+ */
+const handleBatchOrderCallback = async (result) => {
+    const {id: batchId, op, code, data} = result || {};
+    const position = batchId.substring(0, 2);// 截取前两位标识，用于判断开仓还是平仓
+
+    if (code === '0') {
+        logToFile('批量下单响应:successful', result);
+        // 全部成功,更新数据库状态
+        data.map(({ordId, clOrdId}) => order.update({ordId, status: 'successful'}, {where: {clOrdId}}));
+
+        // 开仓成功，缓存批次订单号
+        if (position === POSITION_KC) await redis.set(position, batchId);
+
+        // 平仓成功，清理缓存，一个买卖周期结束
+        if (position === POSITION_PC) {
+            await redis.del(POSITION_KC);
+        }
+
+    } else { // 有失败,更新状态，并删除下单锁
+        logToFile('批量下单响应:failed', result);
+        data.map(({ordId, clOrdId}) => order.update({ordId, status: 'failed'}, {where: {clOrdId}}));
+        await redis.del(position); // 缓存标记成功
+    }
+}
 
 (async () => {
 
-    // 私有频道
-    const ws = watchPrivate({
+    // 私有频道自动登录
+    const privateWs = watchPrivate({
         onOpen: (ws) => handleLogin(ws, user),
-        onMessage: (ws, result) => {
-            if (result?.op === 'batch-orders') {
-                logToFile('批量下单响应', result);
-                result?.data.map(async ({sCode, clOrdId, ordId, tag}) => {
-                    const side = tag.charAt(0);
-                    if (sCode === '0') { // 下单成功，更新订单状态
-                        await order.update({ordId, status: 'successful'}, {where: {clOrdId}})
-                        if (side === POSITION_KC) { // 开仓成功，加入缓存，
-                            await redis.set(tag, ordId)
-                        } else if (side === POSITION_PC) { // 平仓成功，清理缓存
-                            await redis.del(tag)
-                        }
-                    } else { // 买入或卖出失败
-                        await order.update({ordId, status: 'failed'}, {where: {clOrdId}})
-                        if (side === 'B') { // 买
-                            console.log('重新买入')
-                        } else if (side === 'S') { // 卖
-                            console.log('重新卖出')
-                        }
-                    }
-                })
+        onMessage: async (ws, result) => {
+            switch (result?.op) {
+                case 'batch-orders': // 批量下单响应
+                    await handleBatchOrderCallback(result);
+                    break;
+                default:
+                    logToFile('未知的响应', result);
             }
         }
     });
@@ -160,24 +171,31 @@ const consoleTable = (response, diff) => {
             const diff = computeDiff(response, futuresInst, swapInst); // 交割和永续差价
             const diffAbs = Math.abs(diff); // 差价绝对值
             if (cliArgs?.[0] === '--table') consoleTable(response, diff);
-
             if (diffAbs >= kcDiff && diffAbs < pcDiff) { // 开仓规则
                 if (diff > 0) { // 交割大于永续
-                    await debouncedHandleBuy(ws, [
-                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: 1},
-                        {instId: swapInst, side: 'sell', posSide: 'short', sz: 1}
+                    await throttleHandleKC(privateWs, [
+                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: sz},
+                        {instId: swapInst, side: 'sell', posSide: 'short', sz: sz}
                     ])
                 } else {// 交割小于永续
-                    await debouncedHandleBuy(ws, [
-                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: 1},
-                        {instId: swapInst, side: 'sell', posSide: 'short', sz: 1}
+                    await throttleHandleKC(privateWs, [
+                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: sz},
+                        {instId: swapInst, side: 'sell', posSide: 'short', sz: sz}
                     ])
                 }
-
             }
 
-            if (diffAbs >= pcDiff) { // 卖出规则
-                await debouncedHandleSell(ws, [{instId: futuresInst, sz: 1}, {instId: swapInst, sz: 1}])
+            if (diffAbs >= pcDiff) { // 平仓规则
+                const batchId = await redis.get(POSITION_KC);
+                const orderList = await order.findAll({where: {batchId}, raw: true});
+                if (!batchId || !orderList) return logToFile('平仓异常:', '找不到订单信息');
+
+                const args = orderList.map(item => {
+                    const {instId, sz, posSide, side} = item;
+                    return {instId, posSide, sz, side: side === 'buy' ? 'sell' : 'buy'};
+                })
+
+                await throttleHandlePC(privateWs, args);
             }
         }
     });
