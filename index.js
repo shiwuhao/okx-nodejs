@@ -17,7 +17,7 @@ const user = {
 const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 9;// 开仓差价
-const pcDiff = 12.10;// 平仓差价
+const pcDiff = 12.15;// 平仓差价
 const sz = 1;//数量
 
 const POSITION_KC = 'KC';// 开仓标识
@@ -134,6 +134,9 @@ const handleBatchOrderCallback = async (result) => {
         // 平仓成功，清理缓存，一个买卖周期结束
         if (position === POSITION_PC) {
             await redis.del(POSITION_KC);
+            await redis.del(POSITION_KC + ':lock');
+            await redis.del(POSITION_PC);
+            await redis.del(POSITION_PC + ':lock');
         }
 
     } else { // 有失败,更新状态，并删除下单锁
