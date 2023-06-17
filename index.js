@@ -17,7 +17,7 @@ const user = {
 const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 14;// 开仓差价
-const pcDiff = 15;// 平仓差价
+const pcDiff = 16;// 平仓差价
 const sz = 1;//数量
 
 const POSITION_KC = 'KC';// 开仓标识
