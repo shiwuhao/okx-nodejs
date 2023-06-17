@@ -16,8 +16,8 @@ const user = {
 
 const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
-const kcDiff = 9;// 开仓差价
-const pcDiff = 12.15;// 平仓差价
+const kcDiff = 14;// 开仓差价
+const pcDiff = 15;// 平仓差价
 const sz = 1;//数量
 
 const POSITION_KC = 'KC';// 开仓标识
@@ -75,17 +75,25 @@ const handleKC = async (ws, _args) => {
 
 /**
  * 平仓
+ * 平仓基于开仓订单，根据开仓订单反向下单
  * @param ws
- * @param _args
+ * @param kcBatchId
  * @returns {Promise<boolean>}
  */
-const handlePC = async (ws, _args) => {
+const handlePC = async (ws, kcBatchId) => {
     const lockKey = POSITION_PC + ':lock';
     if (await redis.get(lockKey)) return false;
-
     await redis.set(lockKey, 1, 60);// 锁定60秒
 
-    handleBatchOrder(ws, POSITION_PC, _args);
+    const orderList = await order.findAll({where: {kcBatchId}, raw: true});
+    if (!orderList) logToFile('平仓异常:', '找不到订单信息');
+
+    const args = orderList.map(item => {
+        const {instId, sz, posSide, side} = item;
+        return {instId, posSide, sz, side: side === 'buy' ? 'sell' : 'buy'};
+    })
+
+    handleBatchOrder(ws, POSITION_PC, args);
 }
 
 const throttleHandleKC = throttle(handleKC, 2000);
@@ -187,15 +195,7 @@ const handleBatchOrderCallback = async (result) => {
                 const batchId = await redis.get(POSITION_KC);
                 if (!batchId) return false;
 
-                const orderList = await order.findAll({where: {batchId}, raw: true});
-                if (!orderList) logToFile('平仓异常:', '找不到订单信息');
-
-                const args = orderList.map(item => {
-                    const {instId, sz, posSide, side} = item;
-                    return {instId, posSide, sz, side: side === 'buy' ? 'sell' : 'buy'};
-                })
-
-                await throttleHandlePC(privateWs, args);
+                await throttleHandlePC(privateWs, batchId);
             }
         }
     });
