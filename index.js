@@ -193,9 +193,9 @@ const handleBatchOrderCallback = async (result) => {
 
             if (diffAbs >= pcDiff) { // 平仓规则
                 const batchId = await redis.get(POSITION_KC);
-                if (!batchId) return false;
-
-                await throttleHandlePC(privateWs, batchId);
+                if (batchId) {
+                    await throttleHandlePC(privateWs, batchId);
+                }
             }
         }
     });
