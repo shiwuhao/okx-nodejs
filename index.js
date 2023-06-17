@@ -19,9 +19,12 @@ const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 14;// 开仓差价
 const pcDiff = 16;// 平仓差价
 const sz = 1;//数量
+const CACHE_PREFIX = 'swh'; // 缓存前缀,多个项目部署同一台服务器需要更改缓存前缀
 
 const POSITION_KC = 'KC';// 开仓标识
 const POSITION_PC = 'PC';// 平仓标识
+
+const getCacheKey = (key) => CACHE_PREFIX + ':' + key;
 
 /**
  * 生成批量下单参数
@@ -65,8 +68,8 @@ const handleBatchOrder = (ws, position, _args) => {
  * @returns {Promise<boolean>}
  */
 const handleKC = async (ws, _args) => {
-    const lockKey = POSITION_KC + ':lock';
-    if (await redis.get(lockKey) || await redis.get(POSITION_KC)) return false; // 校验锁和开仓订单
+    const lockKey = getCacheKey(POSITION_KC + ':lock');
+    if (await redis.get(lockKey) || await redis.get(getCacheKey(POSITION_KC))) return false; // 校验锁和开仓订单
 
     await redis.set(lockKey, 1, 60); // 锁定60秒
 
@@ -81,7 +84,7 @@ const handleKC = async (ws, _args) => {
  * @returns {Promise<boolean>}
  */
 const handlePC = async (ws, batchId) => {
-    const lockKey = POSITION_PC + ':lock';
+    const lockKey = getCacheKey(POSITION_PC + ':lock');
     if (await redis.get(lockKey)) return false;
     await redis.set(lockKey, 1, 60);// 锁定60秒
 
@@ -137,20 +140,20 @@ const handleBatchOrderCallback = async (result) => {
         data.map(({ordId, clOrdId}) => order.update({ordId, status: 'successful'}, {where: {clOrdId}}));
 
         // 开仓成功，缓存批次订单号
-        if (position === POSITION_KC) await redis.set(position, batchId);
+        if (position === POSITION_KC) await redis.set(getCacheKey(position), batchId);
 
         // 平仓成功，清理缓存，一个买卖周期结束
         if (position === POSITION_PC) {
-            await redis.del(POSITION_KC);
-            await redis.del(POSITION_KC + ':lock');
-            await redis.del(POSITION_PC);
-            await redis.del(POSITION_PC + ':lock');
+            await redis.del(getCacheKey(POSITION_KC));
+            await redis.del(getCacheKey(POSITION_KC + ':lock'));
+            await redis.del(getCacheKey(POSITION_PC));
+            await redis.del(getCacheKey(POSITION_PC + ':lock'));
         }
 
     } else { // 有失败,更新状态，并删除下单锁
         logToFile('批量下单响应:failed', result);
         data.map(({ordId, clOrdId}) => order.update({ordId, status: 'failed'}, {where: {clOrdId}}));
-        await redis.del(position); // 缓存标记成功
+        await redis.del(getCacheKey(position)); // 缓存标记成功
     }
 }
 
@@ -192,7 +195,7 @@ const handleBatchOrderCallback = async (result) => {
             }
 
             if (diffAbs >= pcDiff) { // 平仓规则
-                const batchId = await redis.get(POSITION_KC);
+                const batchId = await redis.get(getCacheKey(POSITION_KC));
                 if (batchId) {
                     await throttleHandlePC(privateWs, batchId);
                 }
