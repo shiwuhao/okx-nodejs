@@ -46,11 +46,11 @@ const buildBatchOrderArgs = (position, _args = []) => {
 /**
  * 批量下单
  * @param ws
- * @param side
+ * @param position
  * @param _args
  */
-const handleBatchOrder = (ws, side, _args) => {
-    const params = buildBatchOrderArgs(side, _args)
+const handleBatchOrder = (ws, position, _args) => {
+    const params = buildBatchOrderArgs(position, _args)
 
     const orders = params.args.map((item) => ({batchId: params.id, ...item}))
     order.bulkCreate(orders).then(() => logToFile('批量下单请求', params))
@@ -77,15 +77,15 @@ const handleKC = async (ws, _args) => {
  * 平仓
  * 平仓基于开仓订单，根据开仓订单反向下单
  * @param ws
- * @param kcBatchId
+ * @param batchId
  * @returns {Promise<boolean>}
  */
-const handlePC = async (ws, kcBatchId) => {
+const handlePC = async (ws, batchId) => {
     const lockKey = POSITION_PC + ':lock';
     if (await redis.get(lockKey)) return false;
     await redis.set(lockKey, 1, 60);// 锁定60秒
 
-    const orderList = await order.findAll({where: {kcBatchId}, raw: true});
+    const orderList = await order.findAll({where: {batchId}, raw: true});
     if (!orderList) logToFile('平仓异常:', '找不到订单信息');
 
     const args = orderList.map(item => {
