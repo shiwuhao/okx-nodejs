@@ -22,10 +22,6 @@ const Order = db.define('orders', {
         comment: '自定义订单id',
         index: true,
     },
-    tag: {
-        type: Sequelize.STRING,
-        comment: '自定义标签',
-    },
     ordType: {
         type: Sequelize.STRING,
         comment: '订单类型',

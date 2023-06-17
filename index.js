@@ -30,7 +30,7 @@ const getCacheKey = (key) => CACHE_PREFIX + ':' + key;
  * 生成批量下单参数
  * @param position
  * @param _args
- * @returns {{args: (*&{clOrdId, tdMode: string, tag, ordType: string})[], op: string, id: string}}
+ * @returns {{args: (*&{clOrdId, tdMode: string, ordType: string})[], op: string, id: string}}
  */
 const buildBatchOrderArgs = (position, _args = []) => {
     const batchId = position + moment().format('YYYYMMDDHHmmssSSS');
@@ -38,7 +38,6 @@ const buildBatchOrderArgs = (position, _args = []) => {
         return {
             tdMode: "cross",
             ordType: "market",
-            tag: position + item?.instId.replaceAll('-', ''),
             clOrdId: batchId + position + (index + 1),
             ...item,
         }
