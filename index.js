@@ -16,8 +16,8 @@ const user = {
 
 const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
-const kcDiff = 15.5;// 开仓差价
-const pcDiff = 16.5;// 平仓差价
+const kcDiff = 20;// 开仓差价
+const pcDiff = 25;// 平仓差价
 const sz = 1;//数量
 const CACHE_PREFIX = 'swh'; // 缓存前缀,多个项目部署同一台服务器需要更改缓存前缀
 
