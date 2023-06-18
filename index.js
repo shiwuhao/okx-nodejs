@@ -16,8 +16,8 @@ const user = {
 
 const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
-const kcDiff = 13;// 开仓差价
-const pcDiff = 15;// 平仓差价
+const kcDiff = 15.5;// 开仓差价
+const pcDiff = 16.5;// 平仓差价
 const sz = 1;//数量
 const CACHE_PREFIX = 'swh'; // 缓存前缀,多个项目部署同一台服务器需要更改缓存前缀
 
@@ -69,7 +69,6 @@ const handleBatchOrder = (ws, position, _args) => {
 const handleKC = async (ws, _args) => {
     const lockKey = getCacheKey(POSITION_KC + ':lock');
     if (await redis.get(lockKey) || await redis.get(getCacheKey(POSITION_KC))) return false; // 校验锁和开仓订单
-
     await redis.set(lockKey, 1, 60); // 锁定60秒
 
     handleBatchOrder(ws, POSITION_KC, _args);
@@ -98,8 +97,8 @@ const handlePC = async (ws, batchId) => {
     handleBatchOrder(ws, POSITION_PC, args);
 }
 
-const throttleHandleKC = throttle(handleKC, 2000);
-const throttleHandlePC = throttle(handlePC, 2000);
+const throttleHandleKC = throttle(handleKC, 3000);
+const throttleHandlePC = throttle(handlePC, 3000);
 
 /**
  * 计算两个产品的差价
@@ -196,6 +195,7 @@ const handleBatchOrderCallback = async (result) => {
             if (diffAbs >= pcDiff) { // 平仓规则
                 const batchId = await redis.get(getCacheKey(POSITION_KC));
                 if (batchId) {
+                    console.log('batchId', batchId);
                     await throttleHandlePC(privateWs, batchId);
                 }
             }

@@ -1,4 +1,4 @@
-const {db, Sequelize} = require("../lib/sqlite");
+const {db, Sequelize} = require("../lib/database");
 const moment = require('moment');
 
 const Order = db.define('orders', {
