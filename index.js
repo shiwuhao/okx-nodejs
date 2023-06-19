@@ -18,7 +18,7 @@ const futuresInst = "ETH-USDT-230929";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 20;// 开仓差价
 const pcDiff = 25;// 平仓差价
-const sz = 100;//数量
+const sz = 10;//数量
 const CACHE_PREFIX = 'swh'; // 缓存前缀,多个项目部署同一台服务器需要更改缓存前缀
 
 const POSITION_KC = 'KC';// 开仓标识
