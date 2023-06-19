@@ -20,7 +20,7 @@ const futuresInst = "ETH-USDT-231229";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 20;// 开仓差价
 const pcDiff = 25;// 平仓差价
-const sz = 10;//数量
+const sz = 1;//数量
 const CACHE_PREFIX = 'swh'; // 缓存前缀,多个项目部署同一台服务器需要更改缓存前缀
 
 const POSITION_KC = 'KC';// 开仓标识
@@ -183,8 +183,8 @@ const handleBatchOrderCallback = async (result) => {
             if (diffAbs >= kcDiff && diffAbs < pcDiff) { // 开仓规则
                 if (diff > 0) { // 交割大于永续
                     await throttleHandleKC(privateWs, [
-                        {instId: futuresInst, side: 'buy', posSide: 'long', sz: sz},
-                        {instId: swapInst, side: 'sell', posSide: 'short', sz: sz}
+                        {instId: futuresInst, side: 'sell', posSide: 'short', sz: sz},
+                        {instId: swapInst, side: 'buy', posSide: 'long', sz: sz}
                     ])
                 } else {// 交割小于永续
                     await throttleHandleKC(privateWs, [
