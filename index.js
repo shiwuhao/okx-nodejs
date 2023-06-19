@@ -14,7 +14,7 @@ const user = {
     passphrase: process.env.API_PASSPHRASE,
 };
 
-const futuresInst = "ETH-USDT-230929";// 交割
+const futuresInst = "ETH-USDT-231229";// 交割
 const swapInst = "ETH-USDT-SWAP";  // 永续
 const kcDiff = 20;// 开仓差价
 const pcDiff = 25;// 平仓差价
